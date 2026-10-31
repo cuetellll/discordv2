@@ -10,7 +10,8 @@ PulseCord is a browser-based communication app with an Express/TypeScript API, P
 - **Voice, camera, and screen share:** LiveKit room tokens are minted by the backend and scoped to one voice channel. Microphone, camera, and screen-share grants are checked against server-side role permissions. The browser publishes actual microphone/camera/display tracks and attaches actual remote tracks; synthetic camera/screen feeds were removed.
 - **Servers and permissions:** server creation, invite codes, joining, channel creation/deletion, role creation/editing, member role assignment, kicking, bans, and basic audit records are implemented. Server authorization is enforced on the backend, not trusted to UI checks. A default `@everyone` role provides view, text-send, and voice connect/speak access; privileged permissions and role assignment are owner-restricted.
 - **User presence/profile basics:** status, custom status, bio, friend requests with incoming/outgoing states, accept/block/remove, and one-to-one/group text DMs.
-- **Production packaging:** Dockerfile, Railway manifest, health endpoint, Prisma initial migration, `.env.example`, `.dockerignore`, lockfile, and a TypeScript production build.
+- **CSP-safe UI/build:** rendered controls use delegated external JavaScript listeners instead of inline event handlers. Tailwind is compiled locally into a minified stylesheet; the JavaScript CSP permits same-origin scripts only and explicitly blocks inline event attributes.
+- **Production packaging:** Dockerfile, Railway manifest, health endpoint, Prisma initial migration, `.env.example`, `.dockerignore`, lockfile, a local favicon, and a TypeScript production build.
 
 ## Explicit limitations
 
@@ -18,7 +19,7 @@ PulseCord is a browser-based communication app with an Express/TypeScript API, P
 - **Direct-message voice/video calls are not implemented.** Their buttons return an explicit message directing users to server voice rooms; DM audio/video is not presented as working.
 - **LiveKit operation is conditional.** Set valid `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`, and test from real browsers over HTTPS. If the service is absent, the token endpoint returns `503` and media does not connect. This repository does not provision LiveKit or TURN.
 - **No email verification, password reset, MFA, or refresh-token flow.** Access tokens expire after 30 minutes; users must sign in again. The bearer token is held in browser local storage, so XSS prevention remains important.
-- **CSP hardening remains.** The current policy permits inline event handlers and `unsafe-eval` for the Tailwind CDN; use built local assets and nonce/event-listener-based handlers before adopting a stricter production CSP.
+- **Style CSP hardening remains.** Inline JavaScript/event attributes are blocked (`script-src 'self'; script-src-attr 'none'`), but `style-src` still permits inline style attributes used by existing dynamic UI. Remove those style attributes before removing that style allowance.
 - **No channel-specific permission overrides, private-channel ACLs, role hierarchy, or moderator-to-moderator hierarchy.** Although the schema has an `is_private` field, the API rejects attempts to set it to `true`; do not use this build for confidential channels.
 - **Forum and announcement types are stored/rendered as channel types, but specialized forum posts, announcement publishing/following, and moderation workflows are not implemented.**
 - **Search and “load earlier” operate on client-loaded messages.** The client fetches at most 200 messages per table; paging is not an unbounded server-side channel history API.
@@ -46,7 +47,9 @@ npm test
 npm start
 ```
 
-Open `http://localhost:3000`. The build creates the local LiveKit browser bundle under `public/vendor/`. The first registration creates an ordinary account; it does not seed demo users or sample conversations.
+Open `http://localhost:3000`. The build generates `css/tailwind.generated.css` and the local LiveKit browser bundle under `public/vendor/`. The first registration creates an ordinary account; it does not seed demo users or sample conversations.
+
+See [QA_CSP_TAILWIND_REPORT.md](QA_CSP_TAILWIND_REPORT.md) for the CSP/Tailwind fixes, verification results, and integrations that still require live service testing.
 
 ## Deploy to GitHub
 

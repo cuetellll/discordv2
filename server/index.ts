@@ -33,7 +33,8 @@ const issueToken = (userId: string) => jwt.sign({}, jwtSecret, { subject: userId
 
 app.use(helmet({ contentSecurityPolicy: { directives: {
   defaultSrc: ["'self'"],
-  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://cdn.tailwindcss.com'],
+  scriptSrc: ["'self'"],
+  scriptSrcAttr: ["'none'"],
   styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net'],
   fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net', 'data:'],
   imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
@@ -560,6 +561,7 @@ const rootDir = path.resolve(process.cwd());
 app.use('/css', express.static(path.join(rootDir, 'css'), { fallthrough: false, maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
 app.use('/js', express.static(path.join(rootDir, 'js'), { fallthrough: false, maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
 app.use('/vendor', express.static(path.join(rootDir, 'public/vendor'), { fallthrough: false, maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
+app.get('/favicon.ico', (_req, res, next) => res.sendFile(path.join(rootDir, 'favicon.ico'), (error) => error && next(error)));
 app.get('/', (_req, res, next) => res.sendFile(path.join(rootDir, 'index.html'), (error) => error && next(error)));
 app.use((req, res) => {
   if (req.path.startsWith('/api/') || req.path.startsWith('/auth/') || req.path.startsWith('/tables/') || req.path.startsWith('/files/')) return res.status(404).json({ error: 'Route not found' });

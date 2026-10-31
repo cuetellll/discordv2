@@ -11,6 +11,10 @@
 - تغییر پیام‌ها و DMs به کلاینت‌های آنلاین از طریق Socket.IO منعکس می‌شود؛ کلاینت channel انتخاب‌شده را پس از reconnect دوباره join می‌کند. LiveKit در کد از reconnect/backoff محدود استفاده می‌کند.
 - WebRTC شبیه‌سازی‌شده حذف شد و به LiveKit SDK محلی/trackهای واقعی browser وصل شد. تنظیمات ورودی/خروجی دستگاه، mute/deafen و camera/screen-track به session واقعی متصل هستند. UI برای حضور صوتی، trackها و وضعیت اتصال از اطلاعات واقعی LiveKit استفاده می‌کند، نه شمارش sessionهای قدیمی.
 - XSS ناشی از مقادیر رنگ، آیکن، status و برخی inline handlerها محدود شد؛ HTML escape و sanitizerهای محدودکننده اضافه شد. CSP و security headers فعال‌اند.
+- تمام ۱۳۵ HTML inline event handler به `data-action`/keyboard metadata تبدیل شد و با event delegation روی `document` و فهرست مجاز actionها اجرا می‌شود؛ inline JavaScript قابل‌اجرا یا `eval` استفاده نمی‌شود. رویدادهای فرم احراز هویت همچنان با `addEventListener` ثبت می‌شوند.
+- Tailwind CDN حذف شد؛ dependency و config محلی اضافه شدند و `npm run build` فایل minified `css/tailwind.generated.css` را تولید می‌کند. CSP اکنون `script-src 'self'` و `script-src-attr 'none'` را صریحاً اعمال می‌کند و دیگر `unsafe-inline`, `unsafe-eval` یا دامنهٔ Tailwind CDN در script policy ندارد.
+- کنترل emoji picker نیز برای click/touch عملکرد toggle دارد. اسکن سورس first-party هیچ SVG/path literal یا API ساخت SVG پیدا نکرد؛ خطای `path d` گزارش‌شده در این سورس قابل تکرار/تعیین نبود.
+- درخواست مرورگر برای `/favicon.ico` ابتدا 404 می‌شد؛ فایل ICO کوچکِ هم‌رنگ برند افزوده شد، route استاتیک صریح و محدود برای آن ثبت شد و asset در Docker runner کپی می‌شود.
 - درخواست دوستی از حالت auto-accept به pending واقعی تغییر کرد. audit log از update/delete عادی append-only شد.
 - ادعاهای نادرست برای Railway/DB/LiveKit health، GIF و screen-share demo حذف شدند. uploader حذف شد چون storage ندارد؛ DM voice/video به‌وضوح پشتیبانی‌نشده اعلام می‌شود. private channel درخواست‌شده رد می‌شود تا ACL ناقص به‌عنوان حفاظت ارائه نشود.
 - `bcrypt` و `zod` به نسخه‌های دارای اصلاح امنیتی ارتقا یافتند. Docker/Railway files، migration اولیه و متغیرهای محیطی نمونه پاک‌سازی شدند.
@@ -23,14 +27,18 @@
 |---|---|
 | نصب تمیز از lockfile با `npm ci` روی Node v22.23.4 | موفق |
 | `npx prisma generate` | موفق؛ Prisma Client v5.22.0 تولید شد |
-| `npm run build` (bundle مرورگر LiveKit + TypeScript production) | موفق |
-| `npm test` | ۶ از ۶ موفق؛ شامل Bearer token، 401، paging، CRUD client، تطبیق handlerهای UI و تطبیق تمام orderBy fields با Prisma DMMF |
+| `npm run build` (Tailwind local CSS + LiveKit browser bundle + TypeScript production) | موفق |
+| `npm test` | ۸ از ۸ موفق؛ شامل API contract، delegated action allowlist، عدم وجود inline handlers، CSP/Tailwind source checks و Prisma field mappings |
 | `node --check` روی JS و test files | موفق |
 | `npx prisma validate` | موفق |
 | مقایسه SQL تولیدشده از Prisma با migration اولیه | دقیقاً برابر |
 | `npm audit` کامل (runtime + dev dependencies) | ۰ آسیب‌پذیری گزارش‌شده |
 | smoke test محلی سرور | صفحهٔ `/` با ۲۰۰ بالا آمد؛ `/api/health` با ۵۰۳ پاسخ داد، که با نبود PostgreSQL محلی انتظار می‌رفت |
 | بررسی static handlerهای `app.*` | handler تعریف‌نشده پیدا نشد |
+| Chromium headless local smoke test | صفحهٔ login بالا آمد؛ dynamic theme action عمل کرد؛ User Settings modal باز/بسته شد؛ ۰ inline event attributes و ۰ button بی‌عمل در DOM نمونه؛ console entries برابر ۰ (شامل CSP، SVG path و 404) |
+| Tailwind و favicon assets از سرور محلی | Tailwind CSS و `/favicon.ico` هر دو HTTP 200؛ stylesheet محلی بارگذاری شد و صفحه دیگر Tailwind CDN را نمی‌خواند |
+
+در خروجی نصب تمیز چند اخطار deprecation از dependencyهای انتقالی توسعه (`inflight`, `rimraf@2`, `glob@7`) و هنگام build اخطار غیرمسدودکنندهٔ «caniuse-lite is outdated» از Tailwind CLI باقی ماند. این اخطارها پنهان یا سرکوب نشدند؛ build و تست‌ها با موفقیت تمام شدند. `npm audit` برای dependencyهای قفل‌شده ۰ آسیب‌پذیری گزارش کرد.
 
 Prisma Client دو query `ServerMember.joinedAt` و `VoiceSession.joinedAt` را بدون خطای field/orderBy پذیرفت؛ اجرای read تا اتصال به DB متوقف شد، چون فقط آدرس محلی آزمایشیِ عمداً غیرفعال استفاده شد. به دیتابیس production وصل نشدم و هیچ داده‌ای را حذف یا تغییر ندادم.
 
@@ -48,7 +56,9 @@ Prisma Client دو query `ServerMember.joinedAt` و `VoiceSession.joinedAt` را
 8. جست‌وجو و load-earlier بر دادهٔ محدود کلاینت (حداکثر ۲۰۰ پیام) متکی‌اند؛ pagination نامحدود سمت سرور نیست.
 9. Socket.IO به adapter چندنمونه‌ای متصل نیست؛ تا افزودن Redis adapter، سرویس را روی یک replica اجرا کنید. بعضی voice sessionها بعد از قطع ناگهانی مرورگر ممکن است در DB باقی بمانند؛ UI آن‌ها را به‌عنوان participant زنده نشان نمی‌دهد.
 10. token ورود ۳۰ دقیقه اعتبار دارد و refresh/password recovery وجود ندارد. token در localStorage نگهداری می‌شود؛ سیاست XSS/مبدا قابل‌اعتماد باید جدی گرفته شود.
-11. CSP برای inline event handlerهای فعلی و Tailwind CDN اجازه‌های `unsafe-inline` و `unsafe-eval` دارد؛ این سازگاری فعلاً امنیت CSP را تضعیف می‌کند. CSP و rendering واقعی نیز در مرورگر end-to-end آزمایش نشده‌اند. برای production سخت‌گیرانه‌تر، event handlerها و Tailwind CDN را به assetهای buildشدهٔ محلی/nonce-based منتقل کنید.
+11. CSP برای script سخت‌گیر شده است، اما `style-src` هنوز `unsafe-inline` دارد چون UI از style attributeهای پویا استفاده می‌کند. حذف آن نیازمند انتقال این styleها به stylesheet/classهای امن است.
+12. Chromium تست فقط login shell و modal/theme را در حالت بدون نشست آزمایش کرد. به‌دلیل نبود PostgreSQL و حساب‌های معتبر، تمام viewهای authenticated و عملیات واقعی create/join/channel/message با دو کاربر end-to-end تست نشدند؛ به‌دلیل نبود LiveKit service/credentials، voice و screen share نیز قابل آزمون واقعی نبودند.
+13. خطای SVG path در browser console این محیط بازتولید نشد؛ سورس first-party فاقد SVG path است. اگر خطا در Railway ادامه داشت، stack/URL منبع console لازم است تا مشخص شود از browser extension یا منبع third-party/state خاصی آمده است.
 
 ## Deploy دقیق روی Railway
 

@@ -29,6 +29,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/index.html ./index.html
+COPY --from=builder /app/favicon.ico ./favicon.ico
 COPY --from=builder /app/css ./css
 COPY --from=builder /app/js ./js
 COPY --from=builder /app/public ./public

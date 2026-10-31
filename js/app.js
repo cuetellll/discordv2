@@ -21,6 +21,21 @@ const PERMISSION_CATALOG = [
 ];
 
 const QUICK_EMOJIS = ['🚀', '🔥', '👍', '❤️', '🎉', '⚡', '👀', '💯', '✅', '🎧', '🛡️', '💜'];
+const DELEGATED_ACTIONS = new Set([
+  'acceptFriendRequest', 'appendEmojiToInput', 'banServerMember', 'blockFriendRow', 'cancelEditMessage', 'cancelReply',
+  'changeMediaDevice', 'closeModal', 'closeModalAndStartDm', 'closeThread', 'copyInviteCode', 'createCustomDmConversation',
+  'createNewChannel', 'createNewRole', 'createNewServer', 'deleteChannel', 'deleteCurrentServer', 'deleteMessage',
+  'endDirectVideoCall', 'handleDisconnectVoice', 'handleToggleCamera', 'handleToggleDeafen', 'handleToggleMute',
+  'handleToggleScreenShare', 'insertQuickPhrase', 'joinOrFocusVoiceChannel', 'joinServerByInvite', 'kickServerMember',
+  'leaveCurrentServer', 'loadMoreMessages', 'logout', 'markAllNotificationsRead', 'openCreateChannelModal',
+  'openFriendsView', 'openModal', 'openThread', 'openUserProfileModal', 'removeFriendRow', 'removePendingAttachment',
+  'requestFullscreenStage', 'saveEditedMessage', 'saveRoleChanges', 'saveServerOverview', 'saveUserProfileSettings',
+  'selectChannel', 'selectDmConversation', 'selectRoleForEdit', 'selectServer', 'sendFriendRequest',
+  'sendFriendRequestById', 'sendMessage', 'sendThreadReply', 'setBlueprintTab', 'setFriendsFilter',
+  'setServerSettingsTab', 'startDirectVideoCall', 'startDmWithUser', 'startEditMessage', 'startReply', 'switchToDMs',
+  'toggleMemberSidebar', 'toggleMobileDrawer', 'toggleNotificationsPopover', 'togglePinMessage', 'togglePinnedPopover',
+  'toggleReaction', 'toggleSelectedMemberRole', 'toggleTheme', 'updateSearchQuery', 'toggleEmojiPicker'
+]);
 
 class PulseCordApp {
   constructor() {
@@ -97,6 +112,7 @@ class PulseCordApp {
 
   async init() {
     document.documentElement.setAttribute('data-theme', this.state.theme);
+    this.bindGlobalEvents();
     if (!this.api.token()) {
       this.renderAuthScreen();
       return;
@@ -112,7 +128,6 @@ class PulseCordApp {
     }
     await this.loadAllData();
     this.api.connectRealtime();
-    this.bindGlobalEvents();
     this.renderAll();
     if (this.state.channels.some((channel) => channel.id === this.state.activeChannelId)) this.api.joinChannel(this.state.activeChannelId);
   }
@@ -334,7 +349,7 @@ class PulseCordApp {
     ).length;
 
     let html = `
-      <div class="server-item ${this.state.viewMode === 'dms' ? 'active' : ''}" onclick="app.switchToDMs()" title="Direct Messages & Friends">
+      <div class="server-item ${this.state.viewMode === 'dms' ? 'active' : ''}" data-action="switchToDMs" title="Direct Messages & Friends">
         <span class="server-pill"></span>
         <div class="server-icon-btn ${this.state.viewMode === 'dms' ? 'bg-[#5865F2] text-white' : 'bg-sidebar text-primary-token hover:bg-[#5865F2] hover:text-white'} relative">
           <i class="fa-solid fa-comments text-lg"></i>
@@ -348,7 +363,7 @@ class PulseCordApp {
       const isActive = this.state.viewMode === 'server' && this.state.activeServerId === srv.id;
       const activeVoiceCount = this.rtc.activeServerId === srv.id ? this.getLiveVoiceParticipantIds(this.rtc.activeChannelId).length : 0;
       html += `
-        <div class="server-item ${isActive ? 'active' : ''}" onclick="app.selectServer('${srv.id}')" title="${this.escapeHtml(srv.name)}">
+        <div class="server-item ${isActive ? 'active' : ''}" data-action="selectServer" data-action-args="${this.encodeActionArgs([srv.id])}" title="${this.escapeHtml(srv.name)}">
           <span class="server-pill"></span>
           <div class="server-icon-btn text-white relative" style="background-color: ${this.safeColor(srv.icon_color, '#5865F2')}">
             <span>${this.escapeHtml((srv.icon_text || srv.name.slice(0, 2)).toUpperCase())}</span>
@@ -359,13 +374,13 @@ class PulseCordApp {
     });
 
     html += `
-      <div class="server-item" onclick="app.openModal('createJoinServer')" title="Create or Join a Server">
+      <div class="server-item" data-action="openModal" data-action-args="${this.encodeActionArgs(['createJoinServer'])}" title="Create or Join a Server">
         <span class="server-pill"></span>
         <div class="server-icon-btn bg-sidebar text-[#23A55A] hover:bg-[#23A55A] hover:text-white">
           <i class="fa-solid fa-plus text-lg"></i>
         </div>
       </div>
-      <div class="server-item" onclick="app.openModal('railwayBlueprint')" title="GitHub & Railway Production Architecture">
+      <div class="server-item" data-action="openModal" data-action-args="${this.encodeActionArgs(['railwayBlueprint'])}" title="GitHub & Railway Production Architecture">
         <span class="server-pill"></span>
         <div class="server-icon-btn bg-sidebar text-[#5865F2] hover:bg-[#5865F2] hover:text-white">
           <i class="fa-solid fa-train-subway text-base"></i>
@@ -383,7 +398,7 @@ class PulseCordApp {
 
     if (this.state.viewMode === 'dms') {
       headerEl.innerHTML = `
-        <button onclick="app.switchToDMs()" class="w-full bg-input text-muted-token hover:text-primary-token text-xs px-2.5 py-1.5 rounded flex items-center justify-between transition">
+        <button data-action="switchToDMs" class="w-full bg-input text-muted-token hover:text-primary-token text-xs px-2.5 py-1.5 rounded flex items-center justify-between transition">
           <span><i class="fa-solid fa-magnifying-glass mr-2"></i>Find or start a conversation</span>
           <kbd class="text-[10px] bg-black/20 px-1.5 py-0.5 rounded">Ctrl+K</kbd>
         </button>
@@ -404,14 +419,14 @@ class PulseCordApp {
 
       let dmListHtml = `
         <div class="p-2 space-y-1">
-          <div class="channel-item ${this.state.dmSubView === 'friends' ? 'active' : ''}" onclick="app.openFriendsView()">
+          <div class="channel-item ${this.state.dmSubView === 'friends' ? 'active' : ''}" data-action="openFriendsView">
             <div class="flex items-center gap-3">
               <i class="fa-solid fa-user-group w-5 text-center"></i>
               <span>Friends & Requests</span>
             </div>
             ${pendingCount > 0 ? `<span class="bg-[#F23F43] text-white text-[11px] font-bold px-1.5 py-0.2 rounded-full">${pendingCount}</span>` : ''}
           </div>
-          <div class="channel-item" onclick="app.openModal('railwayBlueprint')">
+          <div class="channel-item" data-action="openModal" data-action-args="${this.encodeActionArgs(['railwayBlueprint'])}">
             <div class="flex items-center gap-3">
               <i class="fa-solid fa-cloud-arrow-up w-5 text-center text-[#5865F2]"></i>
               <span>Railway & Architecture</span>
@@ -422,7 +437,7 @@ class PulseCordApp {
 
         <div class="px-4 pt-3 pb-1 flex items-center justify-between text-[11px] font-bold tracking-wider uppercase text-muted-token">
           <span>Direct Messages</span>
-          <button onclick="app.openModal('newDmModal')" class="hover:text-primary-token" title="Create DM or Group DM">
+          <button data-action="openModal" data-action-args="${this.encodeActionArgs(['newDmModal'])}" class="hover:text-primary-token" title="Create DM or Group DM">
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
@@ -449,7 +464,7 @@ class PulseCordApp {
         }
 
         dmListHtml += `
-          <div class="channel-item ${isSelected ? 'active' : ''}" onclick="app.selectDmConversation('${conv.conversation_id}')">
+          <div class="channel-item ${isSelected ? 'active' : ''}" data-action="selectDmConversation" data-action-args="${this.encodeActionArgs([conv.conversation_id])}">
             <div class="flex items-center gap-2.5 min-w-0">
               <div class="relative w-8 h-8 rounded-full flex items-center justify-center text-white text-xs shrink-0" style="background-color: ${avatarColor}">
                 <i class="fa-solid ${avatarIcon}"></i>
@@ -478,16 +493,16 @@ class PulseCordApp {
 
     headerEl.innerHTML = `
       <div class="flex items-center justify-between w-full">
-        <button onclick="app.openModal('serverSettings')" class="flex items-center gap-2 font-bold text-sm text-primary-token truncate hover:opacity-90">
+        <button data-action="openModal" data-action-args="${this.encodeActionArgs(['serverSettings'])}" class="flex items-center gap-2 font-bold text-sm text-primary-token truncate hover:opacity-90">
           <span class="truncate">${this.escapeHtml(srv.name)}</span>
           <i class="fa-solid fa-chevron-down text-xs text-muted-token"></i>
         </button>
         <div class="flex items-center gap-1">
-          <button onclick="app.openModal('inviteModal')" class="p-1.5 text-muted-token hover:text-primary-token rounded hover:bg-white/5" title="Invite People">
+          <button data-action="openModal" data-action-args="${this.encodeActionArgs(['inviteModal'])}" class="p-1.5 text-muted-token hover:text-primary-token rounded hover:bg-white/5" title="Invite People">
             <i class="fa-solid fa-user-plus text-xs"></i>
           </button>
           ${canManageServer ? `
-          <button onclick="app.openModal('serverSettings')" class="p-1.5 text-muted-token hover:text-primary-token rounded hover:bg-white/5" title="Server Settings & RBAC">
+          <button data-action="openModal" data-action-args="${this.encodeActionArgs(['serverSettings'])}" class="p-1.5 text-muted-token hover:text-primary-token rounded hover:bg-white/5" title="Server Settings & RBAC">
             <i class="fa-solid fa-sliders text-xs"></i>
           </button>` : ''}
         </div>
@@ -509,7 +524,7 @@ class PulseCordApp {
             <span class="w-2 h-2 rounded-full bg-[#23A55A] shrink-0"></span>
             <span class="text-secondary-token truncate">Region: <strong class="text-primary-token">${this.escapeHtml(srv.region || 'us-east-railway')}</strong></span>
           </div>
-          <button onclick="app.openModal('inviteModal')" class="text-[11px] text-[#5865F2] hover:underline font-semibold shrink-0">Invite</button>
+          <button data-action="openModal" data-action-args="${this.encodeActionArgs(['inviteModal'])}" class="text-[11px] text-[#5865F2] hover:underline font-semibold shrink-0">Invite</button>
         </div>
       </div>
     `;
@@ -520,7 +535,7 @@ class PulseCordApp {
           <div class="px-3 py-1 flex items-center justify-between text-[11px] font-bold tracking-wider uppercase text-muted-token">
             <span class="truncate"><i class="fa-solid fa-angle-down mr-1"></i>${this.escapeHtml(catName)}</span>
             ${canManageChannels ? `
-              <button onclick="app.openCreateChannelModal(${this.escapeJsAttr(catName)})" class="hover:text-primary-token" title="Create Channel in ${this.escapeAttr(catName)}">
+              <button data-action="openCreateChannelModal" data-action-args="${this.encodeActionArgs([catName])}" class="hover:text-primary-token" title="Create Channel in ${this.escapeAttr(catName)}">
                 <i class="fa-solid fa-plus"></i>
               </button>
             ` : ''}
@@ -538,7 +553,7 @@ class PulseCordApp {
 
         html += `
           <div>
-            <div class="channel-item ${isActive ? 'active' : ''}" onclick="app.selectChannel('${ch.id}')">
+            <div class="channel-item ${isActive ? 'active' : ''}" data-action="selectChannel" data-action-args="${this.encodeActionArgs([ch.id])}">
               <div class="flex items-center gap-2 min-w-0">
                 ${iconHtml}
                 <span class="truncate">${this.escapeHtml(ch.name)}</span>
@@ -546,7 +561,7 @@ class PulseCordApp {
               <div class="flex items-center gap-1">
                 ${ch.type === 'voice' ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-black/20 text-muted-token">${voiceUsers.length}</span>` : ''}
                 ${canManageChannels ? `
-                  <button onclick="event.stopPropagation(); app.deleteChannel('${ch.id}')" class="opacity-0 group-hover:opacity-100 hover:text-[#F23F43] text-[11px] px-1" title="Delete Channel">
+                  <button data-action="deleteChannel" data-action-args="${this.encodeActionArgs([ch.id])}" data-stop-click="true" class="opacity-0 group-hover:opacity-100 hover:text-[#F23F43] text-[11px] px-1" title="Delete Channel">
                     <i class="fa-solid fa-trash-can"></i>
                   </button>
                 ` : ''}
@@ -566,7 +581,7 @@ class PulseCordApp {
             const muted = isLocal ? this.rtc.isMuted : vs.muted;
 
             html += `
-              <div class="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-white/5 cursor-pointer" onclick="app.selectChannel('${ch.id}')">
+              <div class="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-white/5 cursor-pointer" data-action="selectChannel" data-action-args="${this.encodeActionArgs([ch.id])}">
                 <div class="flex items-center gap-2 min-w-0">
                   <div class="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] shrink-0 ${speaking ? 'avatar-speaking' : ''}" style="background-color: ${this.safeColor(u.avatar_color, '#5865F2')}">
                     <i class="fa-solid ${this.safeIcon(u.avatar_icon, 'fa-user')}"></i>
@@ -603,7 +618,7 @@ class PulseCordApp {
       if (this.state.dmSubView === 'friends') {
         header.innerHTML = `
           <div class="flex items-center gap-3 overflow-x-auto">
-            <button onclick="app.toggleMobileDrawer()" class="md:hidden text-secondary-token hover:text-primary-token">
+            <button data-action="toggleMobileDrawer" class="md:hidden text-secondary-token hover:text-primary-token">
               <i class="fa-solid fa-bars"></i>
             </button>
             <div class="flex items-center gap-2 font-bold text-primary-token pr-3 border-r border-subtle">
@@ -611,11 +626,11 @@ class PulseCordApp {
               <span>Friends</span>
             </div>
             <div class="flex items-center gap-1.5 text-xs font-medium">
-              <button onclick="app.setFriendsFilter('online')" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'online' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">Online</button>
-              <button onclick="app.setFriendsFilter('all')" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'all' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">All</button>
-              <button onclick="app.setFriendsFilter('pending')" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'pending' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">Pending</button>
-              <button onclick="app.setFriendsFilter('blocked')" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'blocked' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">Blocked</button>
-              <button onclick="app.setFriendsFilter('add')" class="px-2.5 py-1 rounded bg-[#23A55A] text-white font-semibold">Add Friend</button>
+              <button data-action="setFriendsFilter" data-action-args="${this.encodeActionArgs(['online'])}" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'online' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">Online</button>
+              <button data-action="setFriendsFilter" data-action-args="${this.encodeActionArgs(['all'])}" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'all' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">All</button>
+              <button data-action="setFriendsFilter" data-action-args="${this.encodeActionArgs(['pending'])}" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'pending' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">Pending</button>
+              <button data-action="setFriendsFilter" data-action-args="${this.encodeActionArgs(['blocked'])}" class="px-2.5 py-1 rounded ${this.state.friendsFilter === 'blocked' ? 'bg-white/15 text-primary-token font-semibold' : 'text-secondary-token hover:bg-white/5'}">Blocked</button>
+              <button data-action="setFriendsFilter" data-action-args="${this.encodeActionArgs(['add'])}" class="px-2.5 py-1 rounded bg-[#23A55A] text-white font-semibold">Add Friend</button>
             </div>
           </div>
           ${this.renderHeaderRightTools(unreadNotifs)}
@@ -639,7 +654,7 @@ class PulseCordApp {
         }
         header.innerHTML = `
           <div class="flex items-center gap-2.5 min-w-0">
-            <button onclick="app.toggleMobileDrawer()" class="md:hidden text-secondary-token hover:text-primary-token">
+            <button data-action="toggleMobileDrawer" class="md:hidden text-secondary-token hover:text-primary-token">
               <i class="fa-solid fa-bars"></i>
             </button>
             <span class="text-muted-token font-bold">@</span>
@@ -647,10 +662,10 @@ class PulseCordApp {
             <span class="status-dot status-${this.safeStatus(status)}"></span>
           </div>
           <div class="flex items-center gap-2">
-            <button onclick="app.startDirectVideoCall('${this.state.activeDmConversationId}', false)" class="px-2.5 py-1 rounded bg-white/10 hover:bg-[#23A55A] hover:text-white text-xs font-medium text-secondary-token transition" title="Start Voice Call">
+            <button data-action="startDirectVideoCall" data-action-args="${this.encodeActionArgs([this.state.activeDmConversationId, false])}" class="px-2.5 py-1 rounded bg-white/10 hover:bg-[#23A55A] hover:text-white text-xs font-medium text-secondary-token transition" title="Start Voice Call">
               <i class="fa-solid fa-phone mr-1"></i>Voice Call
             </button>
-            <button onclick="app.startDirectVideoCall('${this.state.activeDmConversationId}', true)" class="px-2.5 py-1 rounded bg-white/10 hover:bg-[#5865F2] hover:text-white text-xs font-medium text-secondary-token transition" title="Start Video Call">
+            <button data-action="startDirectVideoCall" data-action-args="${this.encodeActionArgs([this.state.activeDmConversationId, true])}" class="px-2.5 py-1 rounded bg-white/10 hover:bg-[#5865F2] hover:text-white text-xs font-medium text-secondary-token transition" title="Start Video Call">
               <i class="fa-solid fa-video mr-1"></i>Video Call
             </button>
             ${this.renderHeaderRightTools(unreadNotifs)}
@@ -673,7 +688,7 @@ class PulseCordApp {
 
     header.innerHTML = `
       <div class="flex items-center gap-2.5 min-w-0 flex-1">
-        <button onclick="app.toggleMobileDrawer()" class="md:hidden text-secondary-token hover:text-primary-token">
+        <button data-action="toggleMobileDrawer" class="md:hidden text-secondary-token hover:text-primary-token">
           <i class="fa-solid fa-bars"></i>
         </button>
         ${icon}
@@ -682,12 +697,12 @@ class PulseCordApp {
       </div>
       <div class="flex items-center gap-2 shrink-0">
         ${ch.type === 'voice' ? `
-          <button onclick="app.joinOrFocusVoiceChannel('${ch.id}')" class="px-2.5 py-1 rounded bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-semibold flex items-center gap-1.5">
+          <button data-action="joinOrFocusVoiceChannel" data-action-args="${this.encodeActionArgs([ch.id])}" class="px-2.5 py-1 rounded bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-semibold flex items-center gap-1.5">
             <i class="fa-solid fa-headset"></i>
             <span>${this.rtc.activeChannelId === ch.id ? 'Connected' : 'Join Voice'}</span>
           </button>
         ` : ''}
-        <button onclick="app.togglePinnedPopover()" class="relative p-1.5 text-secondary-token hover:text-primary-token rounded hover:bg-white/5" title="Pinned Messages (${pinnedCount})">
+        <button data-action="togglePinnedPopover" class="relative p-1.5 text-secondary-token hover:text-primary-token rounded hover:bg-white/5" title="Pinned Messages (${pinnedCount})">
           <i class="fa-solid fa-thumbtack text-sm"></i>
           ${pinnedCount > 0 ? `<span class="absolute -top-1 -right-1 bg-[#5865F2] text-white text-[9px] font-bold px-1 rounded-full">${pinnedCount}</span>` : ''}
         </button>
@@ -695,7 +710,7 @@ class PulseCordApp {
           <input
             type="text"
             value="${this.escapeAttr(this.state.searchQuery)}"
-            oninput="app.updateSearchQuery(this.value)"
+            data-action="updateSearchQuery" data-action-event="input" data-action-args="${this.encodeActionArgs([{ __pulsecordEventValue: true }])}"
             placeholder="Search messages..."
             class="bg-input text-xs text-primary-token rounded px-2.5 py-1 pr-7 w-36 focus:w-52 transition-all outline-none border border-transparent focus:border-[#5865F2]"
           />
@@ -709,18 +724,18 @@ class PulseCordApp {
   renderHeaderRightTools(unreadNotifs) {
     return `
       <div class="flex items-center gap-1.5">
-        <button onclick="app.toggleTheme()" class="p-1.5 text-secondary-token hover:text-primary-token rounded hover:bg-white/5" title="Toggle Dark/Light Theme">
+        <button data-action="toggleTheme" class="p-1.5 text-secondary-token hover:text-primary-token rounded hover:bg-white/5" title="Toggle Dark/Light Theme">
           <i class="fa-solid ${this.state.theme === 'dark' ? 'fa-sun text-[#FEE75C]' : 'fa-moon text-[#5865F2]'} text-sm"></i>
         </button>
-        <button onclick="app.toggleNotificationsPopover()" class="relative p-1.5 text-secondary-token hover:text-primary-token rounded hover:bg-white/5" title="Notifications">
+        <button data-action="toggleNotificationsPopover" class="relative p-1.5 text-secondary-token hover:text-primary-token rounded hover:bg-white/5" title="Notifications">
           <i class="fa-solid fa-bell text-sm"></i>
           ${unreadNotifs.length > 0 ? `<span class="absolute -top-0.5 -right-0.5 bg-[#F23F43] text-white text-[9px] font-bold px-1 rounded-full">${unreadNotifs.length}</span>` : ''}
         </button>
-        <button onclick="app.openModal('railwayBlueprint')" class="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#5865F2]/15 hover:bg-[#5865F2] text-[#5865F2] hover:text-white text-xs font-semibold transition" title="Inspect Prisma Schema, Dockerfile & Railway Config">
+        <button data-action="openModal" data-action-args="${this.encodeActionArgs(['railwayBlueprint'])}" class="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#5865F2]/15 hover:bg-[#5865F2] text-[#5865F2] hover:text-white text-xs font-semibold transition" title="Inspect Prisma Schema, Dockerfile & Railway Config">
           <i class="fa-solid fa-code-branch"></i>
           <span>Railway & DB</span>
         </button>
-        <button onclick="app.toggleMemberSidebar()" class="p-1.5 ${this.state.showMemberList ? 'text-primary-token bg-white/10' : 'text-secondary-token'} hover:text-primary-token rounded" title="Toggle Member List">
+        <button data-action="toggleMemberSidebar" class="p-1.5 ${this.state.showMemberList ? 'text-primary-token bg-white/10' : 'text-secondary-token'} hover:text-primary-token rounded" title="Toggle Member List">
           <i class="fa-solid fa-users text-sm"></i>
         </button>
       </div>
@@ -809,11 +824,11 @@ class PulseCordApp {
             <span class="text-xs text-gray-400">• Real-time media appears only after connection succeeds</span>
           </div>
           <div class="flex items-center gap-2">
-            <button onclick="app.openModal('mediaDevicesModal')" class="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-xs flex items-center gap-1.5" title="Select Microphone, Speaker & Camera">
+            <button data-action="openModal" data-action-args="${this.encodeActionArgs(['mediaDevicesModal'])}" class="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-xs flex items-center gap-1.5" title="Select Microphone, Speaker & Camera">
               <i class="fa-solid fa-gear"></i>
               <span>Audio/Video Devices</span>
             </button>
-            <button onclick="app.requestFullscreenStage()" class="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-xs" title="Full Screen">
+            <button data-action="requestFullscreenStage" class="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-xs" title="Full Screen">
               <i class="fa-solid fa-expand"></i>
             </button>
           </div>
@@ -828,7 +843,7 @@ class PulseCordApp {
                 <i class="fa-solid fa-desktop"></i>
                 <span>${this.escapeHtml(me.display_name)} — Screen Share</span>
               </div>
-              <button onclick="app.handleToggleScreenShare()" class="absolute bottom-3 right-3 bg-black/75 hover:bg-[#F23F43] text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition">
+              <button data-action="handleToggleScreenShare" class="absolute bottom-3 right-3 bg-black/75 hover:bg-[#F23F43] text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition">
                 Stop Sharing
               </button>
             </div>
@@ -877,32 +892,32 @@ class PulseCordApp {
         <!-- Bottom Voice/Video/Screen-Share Action Dock -->
         <div class="mt-3 pt-2.5 border-t border-white/10 flex flex-wrap items-center justify-center gap-2.5">
           ${!isConnectedHere ? `
-            <button onclick="app.joinOrFocusVoiceChannel('${channel.id}', false)" class="px-4 py-2 rounded-lg bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold flex items-center gap-2 shadow-lg">
+            <button data-action="joinOrFocusVoiceChannel" data-action-args="${this.encodeActionArgs([channel.id, false])}" class="px-4 py-2 rounded-lg bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold flex items-center gap-2 shadow-lg">
               <i class="fa-solid fa-phone-volume"></i>
               <span>Join Voice Channel</span>
             </button>
-            <button onclick="app.joinOrFocusVoiceChannel('${channel.id}', true)" class="px-4 py-2 rounded-lg bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold flex items-center gap-2 shadow-lg">
+            <button data-action="joinOrFocusVoiceChannel" data-action-args="${this.encodeActionArgs([channel.id, true])}" class="px-4 py-2 rounded-lg bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold flex items-center gap-2 shadow-lg">
               <i class="fa-solid fa-video"></i>
               <span>Join with Camera</span>
             </button>
           ` : `
-            <button onclick="app.handleToggleMute()" class="px-3.5 py-2 rounded-lg ${this.rtc.isMuted ? 'bg-[#F23F43] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
+            <button data-action="handleToggleMute" class="px-3.5 py-2 rounded-lg ${this.rtc.isMuted ? 'bg-[#F23F43] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
               <i class="fa-solid ${this.rtc.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i>
               <span>${this.rtc.isMuted ? 'Unmute Mic' : 'Mute Mic'}</span>
             </button>
-            <button onclick="app.handleToggleDeafen()" class="px-3.5 py-2 rounded-lg ${this.rtc.isDeafened ? 'bg-[#F23F43] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
+            <button data-action="handleToggleDeafen" class="px-3.5 py-2 rounded-lg ${this.rtc.isDeafened ? 'bg-[#F23F43] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
               <i class="fa-solid ${this.rtc.isDeafened ? 'fa-ear-deaf' : 'fa-headphones'}"></i>
               <span>${this.rtc.isDeafened ? 'Undeafen' : 'Deafen'}</span>
             </button>
-            <button onclick="app.handleToggleCamera()" class="px-3.5 py-2 rounded-lg ${this.rtc.isVideoEnabled ? 'bg-[#23A55A] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
+            <button data-action="handleToggleCamera" class="px-3.5 py-2 rounded-lg ${this.rtc.isVideoEnabled ? 'bg-[#23A55A] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
               <i class="fa-solid fa-video"></i>
               <span>${this.rtc.isVideoEnabled ? 'Camera On' : 'Turn On Camera'}</span>
             </button>
-            <button onclick="app.handleToggleScreenShare()" class="px-3.5 py-2 rounded-lg ${this.rtc.isScreenSharing ? 'bg-[#5865F2] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
+            <button data-action="handleToggleScreenShare" class="px-3.5 py-2 rounded-lg ${this.rtc.isScreenSharing ? 'bg-[#5865F2] text-white' : 'bg-white/10 hover:bg-white/20 text-white'} text-xs font-semibold flex items-center gap-2 transition">
               <i class="fa-solid fa-desktop"></i>
               <span>${this.rtc.isScreenSharing ? 'Stop Screen Share' : 'Share Screen'}</span>
             </button>
-            <button onclick="app.handleDisconnectVoice()" class="px-4 py-2 rounded-lg bg-[#F23F43] hover:bg-[#d63034] text-white text-xs font-bold flex items-center gap-2">
+            <button data-action="handleDisconnectVoice" class="px-4 py-2 rounded-lg bg-[#F23F43] hover:bg-[#d63034] text-white text-xs font-bold flex items-center gap-2">
               <i class="fa-solid fa-phone-slash"></i>
               <span>Disconnect</span>
             </button>
@@ -949,7 +964,7 @@ class PulseCordApp {
 
             ${hasMore ? `
               <div class="text-center py-2">
-                <button onclick="app.loadMoreMessages()" class="px-3 py-1 rounded bg-elevated hover:bg-white/10 text-xs text-[#5865F2] font-semibold">
+                <button data-action="loadMoreMessages" class="px-3 py-1 rounded bg-elevated hover:bg-white/10 text-xs text-[#5865F2] font-semibold">
                   Load Earlier Messages (${totalCount - visibleMsgs.length} older)
                 </button>
               </div>
@@ -1024,12 +1039,12 @@ class PulseCordApp {
       <div class="message-row group ${isMentioned ? 'mentioned' : ''}" id="msg-row-${msg.id}">
         ${replyBannerHtml}
         <div class="flex items-start gap-3">
-          <div onclick="app.openUserProfileModal('${author.id}')" class="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm shrink-0 mt-0.5 cursor-pointer hover:opacity-90" style="background-color: ${this.safeColor(author.avatar_color, '#5865F2')}">
+          <div data-action="openUserProfileModal" data-action-args="${this.encodeActionArgs([author.id])}" class="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm shrink-0 mt-0.5 cursor-pointer hover:opacity-90" style="background-color: ${this.safeColor(author.avatar_color, '#5865F2')}">
             <i class="fa-solid ${this.safeIcon(author.avatar_icon, 'fa-user')}"></i>
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-baseline gap-2 flex-wrap">
-              <span onclick="app.openUserProfileModal('${author.id}')" class="font-semibold text-sm hover:underline cursor-pointer" style="color: ${this.safeColor(roleColor, 'var(--text-primary)')}">
+              <span data-action="openUserProfileModal" data-action-args="${this.encodeActionArgs([author.id])}" class="font-semibold text-sm hover:underline cursor-pointer" style="color: ${this.safeColor(roleColor, 'var(--text-primary)')}">
                 ${this.escapeHtml(author.display_name || author.username)}
               </span>
               ${author.username === 'pulse_bot' ? '<span class="bg-[#5865F2] text-white text-[9px] font-bold px-1.5 py-0.5 rounded">APP</span>' : ''}
@@ -1044,11 +1059,11 @@ class PulseCordApp {
                   id="edit-input-${msg.id}"
                   type="text"
                   value="${this.escapeAttr(msg.content || '')}"
-                  onkeydown="if(event.key==='Enter') app.saveEditedMessage('${msg.id}', ${isDm}); if(event.key==='Escape') app.cancelEditMessage();"
+                  data-key-action="edit-message" data-key-action-args="${this.encodeActionArgs([msg.id, isDm])}"
                   class="w-full bg-input text-primary-token text-sm px-3 py-1.5 rounded border border-[#5865F2] outline-none"
                 />
                 <div class="text-[11px] text-muted-token mt-1">
-                  escape to <button onclick="app.cancelEditMessage()" class="text-[#5865F2] hover:underline">cancel</button> • enter to <button onclick="app.saveEditedMessage('${msg.id}', ${isDm})" class="text-[#5865F2] hover:underline">save</button>
+                  escape to <button data-action="cancelEditMessage" class="text-[#5865F2] hover:underline">cancel</button> • enter to <button data-action="saveEditedMessage" data-action-args="${this.encodeActionArgs([msg.id, isDm])}" class="text-[#5865F2] hover:underline">save</button>
                 </div>
               </div>
             ` : `
@@ -1074,7 +1089,7 @@ class PulseCordApp {
 
             <!-- Thread Pill -->
             ${msg.thread_name ? `
-              <div onclick="app.openThread('${msg.id}')" class="mt-2 inline-flex items-center gap-2 bg-elevated hover:bg-white/10 border border-subtle px-2.5 py-1 rounded-md text-xs text-[#5865F2] font-semibold cursor-pointer">
+              <div data-action="openThread" data-action-args="${this.encodeActionArgs([msg.id])}" class="mt-2 inline-flex items-center gap-2 bg-elevated hover:bg-white/10 border border-subtle px-2.5 py-1 rounded-md text-xs text-[#5865F2] font-semibold cursor-pointer">
                 <i class="fa-solid fa-comments"></i>
                 <span>Thread: ${this.escapeHtml(msg.thread_name)}</span>
                 <i class="fa-solid fa-chevron-right text-[10px]"></i>
@@ -1090,7 +1105,7 @@ class PulseCordApp {
                   const iReacted = list.includes(me.id);
                   return `
                     <button
-                      onclick="app.toggleReaction('${msg.id}', '${emoji}', ${isDm})"
+                      data-action="toggleReaction" data-action-args="${this.encodeActionArgs([msg.id, emoji, isDm])}"
                       class="px-2 py-0.5 rounded-md text-xs flex items-center gap-1 border transition ${iReacted ? 'bg-[#5865F2]/20 border-[#5865F2] text-primary-token font-semibold' : 'bg-elevated border-subtle text-secondary-token hover:border-white/25'}"
                     >
                       <span>${emoji}</span>
@@ -1106,28 +1121,28 @@ class PulseCordApp {
         <!-- Floating Hover Action Toolbar -->
         <div class="message-actions items-center px-1 py-0.5 gap-0.5">
           ${QUICK_EMOJIS.slice(0, 4).map((em) => `
-            <button onclick="app.toggleReaction('${msg.id}', '${em}', ${isDm})" class="p-1.5 hover:bg-white/10 rounded text-xs" title="React ${em}">${em}</button>
+            <button data-action="toggleReaction" data-action-args="${this.encodeActionArgs([msg.id, em, isDm])}" class="p-1.5 hover:bg-white/10 rounded text-xs" title="React ${em}">${em}</button>
           `).join('')}
-          <button onclick="app.startReply('${msg.id}', ${isDm})" class="p-1.5 text-secondary-token hover:text-primary-token hover:bg-white/10 rounded text-xs" title="Reply">
+          <button data-action="startReply" data-action-args="${this.encodeActionArgs([msg.id, isDm])}" class="p-1.5 text-secondary-token hover:text-primary-token hover:bg-white/10 rounded text-xs" title="Reply">
             <i class="fa-solid fa-reply"></i>
           </button>
           ${!isDm ? `
-            <button onclick="app.openThread('${msg.id}')" class="p-1.5 text-secondary-token hover:text-primary-token hover:bg-white/10 rounded text-xs" title="Open or Create Thread">
+            <button data-action="openThread" data-action-args="${this.encodeActionArgs([msg.id])}" class="p-1.5 text-secondary-token hover:text-primary-token hover:bg-white/10 rounded text-xs" title="Open or Create Thread">
               <i class="fa-solid fa-comments"></i>
             </button>
           ` : ''}
           ${(isMine || canManageMessages) ? `
-            <button onclick="app.togglePinMessage('${msg.id}', ${isDm})" class="p-1.5 text-secondary-token hover:text-[#F0B232] hover:bg-white/10 rounded text-xs" title="${msg.pinned ? 'Unpin Message' : 'Pin Message'}">
+            <button data-action="togglePinMessage" data-action-args="${this.encodeActionArgs([msg.id, isDm])}" class="p-1.5 text-secondary-token hover:text-[#F0B232] hover:bg-white/10 rounded text-xs" title="${msg.pinned ? 'Unpin Message' : 'Pin Message'}">
               <i class="fa-solid fa-thumbtack"></i>
             </button>
           ` : ''}
           ${isMine ? `
-            <button onclick="app.startEditMessage('${msg.id}')" class="p-1.5 text-secondary-token hover:text-primary-token hover:bg-white/10 rounded text-xs" title="Edit Message">
+            <button data-action="startEditMessage" data-action-args="${this.encodeActionArgs([msg.id])}" class="p-1.5 text-secondary-token hover:text-primary-token hover:bg-white/10 rounded text-xs" title="Edit Message">
               <i class="fa-solid fa-pen"></i>
             </button>
           ` : ''}
           ${(isMine || canManageMessages) ? `
-            <button onclick="app.deleteMessage('${msg.id}', ${isDm})" class="p-1.5 text-secondary-token hover:text-[#F23F43] hover:bg-white/10 rounded text-xs" title="Delete Message">
+            <button data-action="deleteMessage" data-action-args="${this.encodeActionArgs([msg.id, isDm])}" class="p-1.5 text-secondary-token hover:text-[#F23F43] hover:bg-white/10 rounded text-xs" title="Delete Message">
               <i class="fa-solid fa-trash-can"></i>
             </button>
           ` : ''}
@@ -1145,7 +1160,7 @@ class PulseCordApp {
             <span class="text-secondary-token truncate">
               Replying to <strong class="text-primary-token">@${this.escapeHtml(this.getUserById(replyMsg.user_id || replyMsg.sender_id).display_name)}</strong>: ${this.escapeHtml((replyMsg.content || '').slice(0, 60))}
             </span>
-            <button onclick="app.cancelReply()" class="text-muted-token hover:text-primary-token ml-2">
+            <button data-action="cancelReply" class="text-muted-token hover:text-primary-token ml-2">
               <i class="fa-solid fa-circle-xmark"></i>
             </button>
           </div>
@@ -1157,7 +1172,7 @@ class PulseCordApp {
               <div class="flex items-center gap-2 bg-input px-2.5 py-1 rounded text-xs">
                 <i class="fa-solid fa-paperclip text-[#5865F2]"></i>
                 <span class="text-primary-token font-medium">${this.escapeHtml(att.name)}</span>
-                <button onclick="app.removePendingAttachment(${idx})" class="text-muted-token hover:text-[#F23F43]">
+                <button data-action="removePendingAttachment" data-action-args="${this.encodeActionArgs([idx])}" class="text-muted-token hover:text-[#F23F43]">
                   <i class="fa-solid fa-xmark"></i>
                 </button>
               </div>
@@ -1170,23 +1185,23 @@ class PulseCordApp {
             id="main-chat-input"
             type="text"
             placeholder="Message ${isDm ? '@' : '#'}${this.escapeAttr(targetName)} — supports @mentions, **bold** and \`code\`"
-            onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); app.sendMessage(${isDm}); }"
+            data-key-action="send-message" data-key-action-args="${this.encodeActionArgs([isDm])}"
             class="flex-1 bg-transparent text-sm text-primary-token outline-none placeholder:text-muted-token"
           />
-          <button onclick="app.insertQuickPhrase()" class="px-2 py-1 rounded bg-white/5 hover:bg-white/15 text-[11px] font-bold text-secondary-token hover:text-primary-token" title="Insert a quick phrase">
+          <button data-action="insertQuickPhrase" class="px-2 py-1 rounded bg-white/5 hover:bg-white/15 text-[11px] font-bold text-secondary-token hover:text-primary-token" title="Insert a quick phrase">
             Phrase
           </button>
           <div class="relative group">
-            <button class="text-secondary-token hover:text-[#FEE75C] p-1" title="Insert Emoji">
+            <button data-action="toggleEmojiPicker" aria-expanded="false" class="text-secondary-token hover:text-[#FEE75C] p-1" title="Insert Emoji">
               <i class="fa-solid fa-face-smile text-lg"></i>
             </button>
-            <div class="hidden group-hover:flex absolute bottom-8 right-0 bg-floating border border-subtle rounded-lg p-2 shadow-xl gap-1.5 z-30">
+            <div data-emoji-picker class="hidden group-hover:flex absolute bottom-8 right-0 bg-floating border border-subtle rounded-lg p-2 shadow-xl gap-1.5 z-30">
               ${QUICK_EMOJIS.slice(0, 6).map((em) => `
-                <button onclick="app.appendEmojiToInput('${em}')" class="hover:scale-125 transition text-base p-1">${em}</button>
+                <button data-action="appendEmojiToInput" data-action-args="${this.encodeActionArgs([em])}" class="hover:scale-125 transition text-base p-1">${em}</button>
               `).join('')}
             </div>
           </div>
-          <button onclick="app.sendMessage(${isDm})" class="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition">
+          <button data-action="sendMessage" data-action-args="${this.encodeActionArgs([isDm])}" class="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition">
             <span>Send</span>
             <i class="fa-solid fa-paper-plane text-[11px]"></i>
           </button>
@@ -1210,7 +1225,7 @@ class PulseCordApp {
           <p class="text-xs text-muted-token mt-1">Enter the username of a registered account to send a friend request.</p>
           <div class="mt-4 flex items-center gap-2 bg-input p-2 rounded-lg border border-subtle focus-within:border-[#5865F2]">
             <input id="add-friend-input" type="text" placeholder="Enter a username..." class="flex-1 bg-transparent text-sm text-primary-token outline-none px-2" />
-            <button onclick="app.sendFriendRequest()" class="bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold px-4 py-2 rounded-md">
+            <button data-action="sendFriendRequest" class="bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold px-4 py-2 rounded-md">
               Send Friend Request
             </button>
           </div>
@@ -1229,8 +1244,8 @@ class PulseCordApp {
                   </div>
                 </div>
                 <div class="flex items-center gap-2">
-                  <button onclick="app.startDmWithUser('${u.id}')" class="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs font-semibold text-primary-token">Message</button>
-                  <button onclick="app.sendFriendRequestById('${u.id}')" class="px-3 py-1.5 rounded bg-[#23A55A] hover:bg-[#1e8e4c] text-xs font-semibold text-white">Add Friend</button>
+                  <button data-action="startDmWithUser" data-action-args="${this.encodeActionArgs([u.id])}" class="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs font-semibold text-primary-token">Message</button>
+                  <button data-action="sendFriendRequestById" data-action-args="${this.encodeActionArgs([u.id])}" class="px-3 py-1.5 rounded bg-[#23A55A] hover:bg-[#1e8e4c] text-xs font-semibold text-white">Add Friend</button>
                 </div>
               </div>
             `).join('')}
@@ -1285,19 +1300,19 @@ class PulseCordApp {
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     ${row.status === 'pending_incoming' ? `
-                      <button onclick="app.acceptFriendRequest('${row.id}')" class="px-3 py-1.5 rounded bg-[#23A55A] text-white text-xs font-semibold">Accept</button>
-                      <button onclick="app.removeFriendRow('${row.id}')" class="px-3 py-1.5 rounded bg-[#F23F43] text-white text-xs font-semibold">Ignore</button>
+                      <button data-action="acceptFriendRequest" data-action-args="${this.encodeActionArgs([row.id])}" class="px-3 py-1.5 rounded bg-[#23A55A] text-white text-xs font-semibold">Accept</button>
+                      <button data-action="removeFriendRow" data-action-args="${this.encodeActionArgs([row.id])}" class="px-3 py-1.5 rounded bg-[#F23F43] text-white text-xs font-semibold">Ignore</button>
                     ` : `
-                      <button onclick="app.startDmWithUser('${peer.id}')" class="p-2 rounded-full bg-input hover:bg-[#5865F2] hover:text-white text-secondary-token" title="Message">
+                      <button data-action="startDmWithUser" data-action-args="${this.encodeActionArgs([peer.id])}" class="p-2 rounded-full bg-input hover:bg-[#5865F2] hover:text-white text-secondary-token" title="Message">
                         <i class="fa-solid fa-message text-xs"></i>
                       </button>
-                      <button onclick="app.startDmWithUser('${peer.id}', true)" class="p-2 rounded-full bg-input hover:bg-[#23A55A] hover:text-white text-secondary-token" title="Start Video Call">
+                      <button data-action="startDmWithUser" data-action-args="${this.encodeActionArgs([peer.id, true])}" class="p-2 rounded-full bg-input hover:bg-[#23A55A] hover:text-white text-secondary-token" title="Start Video Call">
                         <i class="fa-solid fa-video text-xs"></i>
                       </button>
-                      <button onclick="app.blockFriendRow('${row.id}')" class="p-2 rounded-full bg-input hover:bg-[#F23F43] hover:text-white text-secondary-token" title="Block User">
+                      <button data-action="blockFriendRow" data-action-args="${this.encodeActionArgs([row.id])}" class="p-2 rounded-full bg-input hover:bg-[#F23F43] hover:text-white text-secondary-token" title="Block User">
                         <i class="fa-solid fa-ban text-xs"></i>
                       </button>
-                      <button onclick="app.removeFriendRow('${row.id}')" class="p-2 rounded-full bg-input hover:bg-[#F23F43] hover:text-white text-secondary-token" title="Remove Friend">
+                      <button data-action="removeFriendRow" data-action-args="${this.encodeActionArgs([row.id])}" class="p-2 rounded-full bg-input hover:bg-[#F23F43] hover:text-white text-secondary-token" title="Remove Friend">
                         <i class="fa-solid fa-user-xmark text-xs"></i>
                       </button>
                     `}
@@ -1335,7 +1350,7 @@ class PulseCordApp {
                 <span class="w-2 h-2 rounded-full bg-[#23A55A] animate-ping"></span>
                 DIRECT WEBRTC CALL — ${this.escapeHtml(title)}
               </span>
-              <button onclick="app.endDirectVideoCall()" class="px-3 py-1 rounded bg-[#F23F43] text-white text-xs font-bold">End Call</button>
+              <button data-action="endDirectVideoCall" class="px-3 py-1 rounded bg-[#F23F43] text-white text-xs font-bold">End Call</button>
             </div>
             <div class="video-stage-grid flex-1 my-2">
               <div class="video-tile speaking-ring">
@@ -1352,13 +1367,13 @@ class PulseCordApp {
               </div>
             </div>
             <div class="flex items-center justify-center gap-2">
-              <button onclick="app.handleToggleMute()" class="px-3 py-1.5 rounded ${this.rtc.isMuted ? 'bg-[#F23F43]' : 'bg-white/10'} text-white text-xs font-semibold">
+              <button data-action="handleToggleMute" class="px-3 py-1.5 rounded ${this.rtc.isMuted ? 'bg-[#F23F43]' : 'bg-white/10'} text-white text-xs font-semibold">
                 <i class="fa-solid ${this.rtc.isMuted ? 'fa-microphone-slash' : 'fa-microphone'} mr-1"></i>${this.rtc.isMuted ? 'Unmute' : 'Mute'}
               </button>
-              <button onclick="app.handleToggleCamera()" class="px-3 py-1.5 rounded ${this.rtc.isVideoEnabled ? 'bg-[#23A55A]' : 'bg-white/10'} text-white text-xs font-semibold">
+              <button data-action="handleToggleCamera" class="px-3 py-1.5 rounded ${this.rtc.isVideoEnabled ? 'bg-[#23A55A]' : 'bg-white/10'} text-white text-xs font-semibold">
                 <i class="fa-solid fa-video mr-1"></i>Camera
               </button>
-              <button onclick="app.handleToggleScreenShare()" class="px-3 py-1.5 rounded ${this.rtc.isScreenSharing ? 'bg-[#5865F2]' : 'bg-white/10'} text-white text-xs font-semibold">
+              <button data-action="handleToggleScreenShare" class="px-3 py-1.5 rounded ${this.rtc.isScreenSharing ? 'bg-[#5865F2]' : 'bg-white/10'} text-white text-xs font-semibold">
                 <i class="fa-solid fa-desktop mr-1"></i>Share Screen
               </button>
             </div>
@@ -1415,7 +1430,7 @@ class PulseCordApp {
           <div class="p-3 rounded-lg bg-elevated border border-subtle space-y-2">
             <div class="text-xs font-bold text-primary-token">Deployment status</div>
             <div class="text-[11px] text-muted-token">Verify the Railway health endpoint and test a real two-user voice room. This panel does not report remote service health.</div>
-            <button onclick="app.openModal('railwayBlueprint')" class="w-full mt-1 py-1.5 rounded bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold">
+            <button data-action="openModal" data-action-args="${this.encodeActionArgs(['railwayBlueprint'])}" class="w-full mt-1 py-1.5 rounded bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold">
               Inspect Deployment Files
             </button>
           </div>
@@ -1483,7 +1498,7 @@ class PulseCordApp {
     const roles = this.state.roles.filter((role) => role.server_id === server?.id && role.name !== '@everyone');
     const canManageRoles = this.hasPermission('MANAGE_ROLES', server?.id) && memberRow.user_id !== server?.owner_id;
     return `
-      <div onclick="app.openUserProfileModal('${u.id}')" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer transition">
+      <div data-action="openUserProfileModal" data-action-args="${this.encodeActionArgs([u.id])}" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer transition">
         <div class="relative w-8 h-8 rounded-full flex items-center justify-center text-white text-xs shrink-0" style="background-color: ${this.safeColor(u.avatar_color, '#5865F2')}">
           <i class="fa-solid ${this.safeIcon(u.avatar_icon, 'fa-user')}"></i>
           <span class="status-dot status-${this.safeStatus(u.status)} absolute -bottom-0.5 -right-0.5"></span>
@@ -1494,7 +1509,7 @@ class PulseCordApp {
           </div>
           ${u.custom_status ? `<div class="text-[10px] text-muted-token truncate">${this.escapeHtml(u.custom_status)}</div>` : ''}
         </div>
-        ${canManageRoles ? `<div class="flex items-center gap-1" onclick="event.stopPropagation()"><select id="member-role-${this.escapeAttr(memberRow.id)}" title="Choose a role to add or remove" class="max-w-24 text-[10px] bg-input text-primary-token rounded p-1"><option value="">Choose role</option>${roles.map((role) => `<option value="${this.escapeAttr(role.id)}">${(memberRow.role_ids || []).includes(role.id) ? '✓ ' : ''}${this.escapeHtml(role.name)}</option>`).join('')}</select><button onclick="event.stopPropagation(); app.toggleMemberRole('${this.escapeAttr(memberRow.id)}', document.getElementById('member-role-${this.escapeAttr(memberRow.id)}').value)" class="text-[9px] bg-white/10 px-1.5 py-1 rounded" title="Toggle selected role">Set</button></div>` : ''}
+        ${canManageRoles ? `<div class="flex items-center gap-1" data-stop-click="true"><select id="member-role-${this.escapeAttr(memberRow.id)}" title="Choose a role to add or remove" class="max-w-24 text-[10px] bg-input text-primary-token rounded p-1"><option value="">Choose role</option>${roles.map((role) => `<option value="${this.escapeAttr(role.id)}">${(memberRow.role_ids || []).includes(role.id) ? '✓ ' : ''}${this.escapeHtml(role.name)}</option>`).join('')}</select><button data-action="toggleSelectedMemberRole" data-action-args="${this.encodeActionArgs([memberRow.id])}" data-stop-click="true" class="text-[9px] bg-white/10 px-1.5 py-1 rounded" title="Toggle selected role">Set</button></div>` : ''}
       </div>
     `;
   }
@@ -1506,7 +1521,7 @@ class PulseCordApp {
 
     panel.innerHTML = `
       <div class="flex items-center justify-between gap-2 px-2 py-1.5 bg-elevated border-t border-subtle">
-        <div onclick="app.openModal('userSettings')" class="flex items-center gap-2 min-w-0 p-1 rounded hover:bg-white/5 cursor-pointer flex-1" title="Account, Status & Session Switcher">
+        <div data-action="openModal" data-action-args="${this.encodeActionArgs(['userSettings'])}" class="flex items-center gap-2 min-w-0 p-1 rounded hover:bg-white/5 cursor-pointer flex-1" title="Account, Status & Session Switcher">
           <div class="relative w-8 h-8 rounded-full flex items-center justify-center text-white text-xs shrink-0 ${this.rtc.isSpeaking ? 'avatar-speaking' : ''}" style="background-color: ${this.safeColor(me.avatar_color, '#5865F2')}">
             <i class="fa-solid ${this.safeIcon(me.avatar_icon, 'fa-user-astronaut')}"></i>
             <span class="status-dot status-${this.safeStatus(me.status)} absolute -bottom-0.5 -right-0.5"></span>
@@ -1517,13 +1532,13 @@ class PulseCordApp {
           </div>
         </div>
         <div class="flex items-center gap-0.5 shrink-0">
-          <button onclick="app.handleToggleMute()" class="p-1.5 rounded hover:bg-white/10 ${this.rtc.isMuted ? 'text-[#F23F43]' : 'text-secondary-token hover:text-primary-token'}" title="${this.rtc.isMuted ? 'Unmute' : 'Mute'}">
+          <button data-action="handleToggleMute" class="p-1.5 rounded hover:bg-white/10 ${this.rtc.isMuted ? 'text-[#F23F43]' : 'text-secondary-token hover:text-primary-token'}" title="${this.rtc.isMuted ? 'Unmute' : 'Mute'}">
             <i class="fa-solid ${this.rtc.isMuted ? 'fa-microphone-slash' : 'fa-microphone'} text-xs"></i>
           </button>
-          <button onclick="app.handleToggleDeafen()" class="p-1.5 rounded hover:bg-white/10 ${this.rtc.isDeafened ? 'text-[#F23F43]' : 'text-secondary-token hover:text-primary-token'}" title="${this.rtc.isDeafened ? 'Undeafen' : 'Deafen'}">
+          <button data-action="handleToggleDeafen" class="p-1.5 rounded hover:bg-white/10 ${this.rtc.isDeafened ? 'text-[#F23F43]' : 'text-secondary-token hover:text-primary-token'}" title="${this.rtc.isDeafened ? 'Undeafen' : 'Deafen'}">
             <i class="fa-solid ${this.rtc.isDeafened ? 'fa-ear-deaf' : 'fa-headphones'} text-xs"></i>
           </button>
-          <button onclick="app.openModal('userSettings')" class="p-1.5 rounded hover:bg-white/10 text-secondary-token hover:text-primary-token" title="User Settings & Account Switcher">
+          <button data-action="openModal" data-action-args="${this.encodeActionArgs(['userSettings'])}" class="p-1.5 rounded hover:bg-white/10 text-secondary-token hover:text-primary-token" title="User Settings & Account Switcher">
             <i class="fa-solid fa-gear text-xs"></i>
           </button>
         </div>
@@ -1553,20 +1568,20 @@ class PulseCordApp {
               <i class="fa-solid ${this.rtc.connectionStatus === 'connected' ? 'fa-signal' : 'fa-rotate'}"></i>
               <span>${this.rtc.connectionStatus === 'connected' ? 'Voice Connected' : this.rtc.connectionStatus === 'reconnecting' ? 'Reconnecting…' : this.rtc.connectionStatus === 'connecting' ? 'Connecting…' : 'Voice Disconnected'}</span>
             </div>
-            <div onclick="app.selectChannel('${this.rtc.activeChannelId}')" class="text-[11px] text-gray-400 hover:underline cursor-pointer truncate">
+            <div data-action="selectChannel" data-action-args="${this.encodeActionArgs([this.rtc.activeChannelId])}" class="text-[11px] text-gray-400 hover:underline cursor-pointer truncate">
               ${this.escapeHtml(ch ? ch.name : 'Voice')} / ${this.escapeHtml(srv ? srv.name : '')}
             </div>
           </div>
-          <button onclick="app.handleDisconnectVoice()" class="p-1.5 rounded hover:bg-[#F23F43]/20 text-[#F23F43]" title="Disconnect Voice">
+          <button data-action="handleDisconnectVoice" class="p-1.5 rounded hover:bg-[#F23F43]/20 text-[#F23F43]" title="Disconnect Voice">
             <i class="fa-solid fa-phone-slash"></i>
           </button>
         </div>
         <div class="grid grid-cols-2 gap-1.5">
-          <button onclick="app.handleToggleCamera()" class="py-1 px-2 rounded ${this.rtc.isVideoEnabled ? 'bg-[#23A55A] text-white' : 'bg-white/10 text-gray-200 hover:bg-white/15'} font-semibold flex items-center justify-center gap-1.5">
+          <button data-action="handleToggleCamera" class="py-1 px-2 rounded ${this.rtc.isVideoEnabled ? 'bg-[#23A55A] text-white' : 'bg-white/10 text-gray-200 hover:bg-white/15'} font-semibold flex items-center justify-center gap-1.5">
             <i class="fa-solid fa-video"></i>
             <span>Video</span>
           </button>
-          <button onclick="app.handleToggleScreenShare()" class="py-1 px-2 rounded ${this.rtc.isScreenSharing ? 'bg-[#5865F2] text-white' : 'bg-white/10 text-gray-200 hover:bg-white/15'} font-semibold flex items-center justify-center gap-1.5">
+          <button data-action="handleToggleScreenShare" class="py-1 px-2 rounded ${this.rtc.isScreenSharing ? 'bg-[#5865F2] text-white' : 'bg-white/10 text-gray-200 hover:bg-white/15'} font-semibold flex items-center justify-center gap-1.5">
             <i class="fa-solid fa-desktop"></i>
             <span>Screen</span>
           </button>
@@ -1592,7 +1607,7 @@ class PulseCordApp {
             <i class="fa-solid fa-comments text-[#5865F2]"></i>
             <span class="truncate">${this.escapeHtml(parent.thread_name || 'Thread Discussion')}</span>
           </div>
-          <button onclick="app.closeThread()" class="text-muted-token hover:text-primary-token">
+          <button data-action="closeThread" class="text-muted-token hover:text-primary-token">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
@@ -1616,8 +1631,8 @@ class PulseCordApp {
           }).join('')}
         </div>
         <div class="p-3 border-t border-subtle flex gap-2">
-          <input id="thread-reply-input" type="text" placeholder="Reply in thread..." onkeydown="if(event.key==='Enter') app.sendThreadReply('${parent.id}')" class="flex-1 bg-input text-xs text-primary-token px-3 py-2 rounded outline-none" />
-          <button onclick="app.sendThreadReply('${parent.id}')" class="bg-[#5865F2] text-white text-xs font-semibold px-3 py-2 rounded">Send</button>
+          <input id="thread-reply-input" type="text" placeholder="Reply in thread..." data-key-action="thread-reply" data-key-action-args="${this.encodeActionArgs([parent.id])}" class="flex-1 bg-input text-xs text-primary-token px-3 py-2 rounded outline-none" />
+          <button data-action="sendThreadReply" data-action-args="${this.encodeActionArgs([parent.id])}" class="bg-[#5865F2] text-white text-xs font-semibold px-3 py-2 rounded">Send</button>
         </div>
       </div>
     `;
@@ -1629,7 +1644,7 @@ class PulseCordApp {
       <div class="absolute top-2 right-4 w-80 sm:w-96 bg-floating border border-subtle rounded-xl shadow-2xl z-30 overflow-hidden">
         <div class="px-4 py-3 bg-elevated border-b border-subtle flex items-center justify-between">
           <span class="font-bold text-xs uppercase tracking-wider text-primary-token"><i class="fa-solid fa-thumbtack text-[#F0B232] mr-1.5"></i>Pinned Messages (${pinned.length})</span>
-          <button onclick="app.togglePinnedPopover()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+          <button data-action="togglePinnedPopover" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="max-h-80 overflow-y-auto p-3 space-y-2">
           ${pinned.length === 0 ? `<div class="text-xs text-muted-token py-6 text-center">No pinned messages in this channel yet.</div>` : pinned.map((m) => {
@@ -1638,7 +1653,7 @@ class PulseCordApp {
               <div class="p-3 rounded-lg bg-elevated border border-subtle space-y-1">
                 <div class="flex items-center justify-between text-xs">
                   <span class="font-bold text-primary-token">${this.escapeHtml(u.display_name)}</span>
-                  <button onclick="app.togglePinMessage('${m.id}', false)" class="text-[10px] text-[#F23F43] hover:underline">Unpin</button>
+                  <button data-action="togglePinMessage" data-action-args="${this.encodeActionArgs([m.id, false])}" class="text-[10px] text-[#F23F43] hover:underline">Unpin</button>
                 </div>
                 <div class="text-xs text-secondary-token">${this.formatMessageContent(m.content || '')}</div>
               </div>
@@ -1656,8 +1671,8 @@ class PulseCordApp {
         <div class="px-4 py-3 bg-elevated border-b border-subtle flex items-center justify-between">
           <span class="font-bold text-xs uppercase tracking-wider text-primary-token"><i class="fa-solid fa-bell text-[#5865F2] mr-1.5"></i>Inbox & Notifications</span>
           <div class="flex items-center gap-2">
-            <button onclick="app.markAllNotificationsRead()" class="text-[11px] text-[#5865F2] hover:underline">Mark all read</button>
-            <button onclick="app.toggleNotificationsPopover()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+            <button data-action="markAllNotificationsRead" class="text-[11px] text-[#5865F2] hover:underline">Mark all read</button>
+            <button data-action="toggleNotificationsPopover" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
         <div class="max-h-80 overflow-y-auto p-3 space-y-2">
@@ -1716,14 +1731,14 @@ class PulseCordApp {
         <div class="bg-sidebar border border-subtle rounded-xl max-w-md w-full p-6 shadow-2xl space-y-5">
           <div class="flex items-center justify-between">
             <h3 class="text-lg font-extrabold text-primary-token">Create or Join a Server</h3>
-            <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+            <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
           </div>
 
           <div class="space-y-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-muted-token">Create a New Server</h4>
             <input id="new-server-name" type="text" placeholder="Server Name (e.g. WebRTC Systems Lab)" class="w-full bg-input text-sm text-primary-token px-3 py-2 rounded border border-subtle outline-none" />
             <input id="new-server-desc" type="text" placeholder="Short description..." class="w-full bg-input text-sm text-primary-token px-3 py-2 rounded border border-subtle outline-none" />
-            <button onclick="app.createNewServer()" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-2.5 rounded-lg">
+            <button data-action="createNewServer" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-2.5 rounded-lg">
               Create Server
             </button>
           </div>
@@ -1733,7 +1748,7 @@ class PulseCordApp {
             <p class="text-xs text-muted-token">Try <code class="text-primary-token">pulsecord-hq</code>, <code class="text-primary-token">railway-builders</code>, or <code class="text-primary-token">nexus-gaming</code></p>
             <div class="flex gap-2">
               <input id="join-invite-code" type="text" placeholder="Enter invite code..." class="flex-1 bg-input text-sm text-primary-token px-3 py-2 rounded border border-subtle outline-none" />
-              <button onclick="app.joinServerByInvite()" class="bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold px-4 py-2 rounded-lg">
+              <button data-action="joinServerByInvite" class="bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold px-4 py-2 rounded-lg">
                 Join
               </button>
             </div>
@@ -1760,15 +1775,15 @@ class PulseCordApp {
           <div class="w-52 bg-elevated p-4 border-r border-subtle flex flex-col justify-between shrink-0">
             <div class="space-y-1">
               <div class="text-[11px] font-bold uppercase tracking-wider text-muted-token px-2 mb-2 truncate">${this.escapeHtml(srv.name)}</div>
-              <button onclick="app.setServerSettingsTab('overview')" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'overview' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Overview</button>
-              <button onclick="app.setServerSettingsTab('roles')" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'roles' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Roles & Permissions</button>
-              <button onclick="app.setServerSettingsTab('members')" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'members' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Members & Moderation</button>
-              <button onclick="app.setServerSettingsTab('audit')" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'audit' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Audit Logs (${srvLogs.length})</button>
+              <button data-action="setServerSettingsTab" data-action-args="${this.encodeActionArgs(['overview'])}" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'overview' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Overview</button>
+              <button data-action="setServerSettingsTab" data-action-args="${this.encodeActionArgs(['roles'])}" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'roles' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Roles & Permissions</button>
+              <button data-action="setServerSettingsTab" data-action-args="${this.encodeActionArgs(['members'])}" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'members' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Members & Moderation</button>
+              <button data-action="setServerSettingsTab" data-action-args="${this.encodeActionArgs(['audit'])}" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold ${tab === 'audit' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">Audit Logs (${srvLogs.length})</button>
             </div>
             <div class="space-y-1 border-t border-subtle pt-3">
-              <button onclick="app.leaveCurrentServer()" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold text-[#F0B232] hover:bg-white/5">Leave Server</button>
+              <button data-action="leaveCurrentServer" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold text-[#F0B232] hover:bg-white/5">Leave Server</button>
               ${srv.owner_id === this.state.currentUserId ? `
-                <button onclick="app.deleteCurrentServer()" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold text-[#F23F43] hover:bg-white/5">Delete Server</button>
+                <button data-action="deleteCurrentServer" class="w-full text-left px-3 py-1.5 rounded text-xs font-semibold text-[#F23F43] hover:bg-white/5">Delete Server</button>
               ` : ''}
             </div>
           </div>
@@ -1777,7 +1792,7 @@ class PulseCordApp {
           <div class="flex-1 p-6 overflow-y-auto">
             <div class="flex items-center justify-between mb-5">
               <h3 class="text-lg font-extrabold text-primary-token uppercase tracking-wide">${tab}</h3>
-              <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token text-sm"><i class="fa-solid fa-circle-xmark text-lg"></i></button>
+              <button data-action="closeModal" class="text-muted-token hover:text-primary-token text-sm"><i class="fa-solid fa-circle-xmark text-lg"></i></button>
             </div>
 
             ${tab === 'overview' ? `
@@ -1800,7 +1815,7 @@ class PulseCordApp {
                     <input id="srv-edit-region" type="text" value="${this.escapeAttr(srv.region || 'us-east-railway')}" class="w-full mt-1 bg-input text-sm text-primary-token px-3 py-2 rounded border border-subtle" />
                   </div>
                 </div>
-                <button onclick="app.saveServerOverview()" class="bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold px-5 py-2.5 rounded-lg">
+                <button data-action="saveServerOverview" class="bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold px-5 py-2.5 rounded-lg">
                   Save Changes
                 </button>
               </div>
@@ -1809,11 +1824,11 @@ class PulseCordApp {
             ${tab === 'roles' ? `
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="space-y-2">
-                  <button onclick="app.createNewRole()" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-2 rounded">
+                  <button data-action="createNewRole" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-2 rounded">
                     + Create Role
                   </button>
                   ${srvRoles.map((r) => `
-                    <div onclick="app.selectRoleForEdit('${r.id}')" class="p-2.5 rounded cursor-pointer border ${selectedRole && selectedRole.id === r.id ? 'bg-elevated border-[#5865F2]' : 'border-subtle hover:bg-white/5'} flex items-center justify-between text-xs">
+                    <div data-action="selectRoleForEdit" data-action-args="${this.encodeActionArgs([r.id])}" class="p-2.5 rounded cursor-pointer border ${selectedRole && selectedRole.id === r.id ? 'bg-elevated border-[#5865F2]' : 'border-subtle hover:bg-white/5'} flex items-center justify-between text-xs">
                       <span class="font-bold flex items-center gap-2">
                         <span class="w-3 h-3 rounded-full" style="background-color: ${this.safeColor(r.color, '#99AAB5')}"></span>
                         ${this.escapeHtml(r.name)}
@@ -1849,7 +1864,7 @@ class PulseCordApp {
                         `;
                       }).join('')}
                     </div>
-                    <button onclick="app.saveRoleChanges('${selectedRole.id}')" class="bg-[#23A55A] text-white text-xs font-bold px-4 py-2 rounded">
+                    <button data-action="saveRoleChanges" data-action-args="${this.encodeActionArgs([selectedRole.id])}" class="bg-[#23A55A] text-white text-xs font-bold px-4 py-2 rounded">
                       Save Role & Permissions
                     </button>
                   </div>
@@ -1874,8 +1889,8 @@ class PulseCordApp {
                       </div>
                       ${u.id !== srv.owner_id ? `
                         <div class="flex items-center gap-2">
-                          <button onclick="app.kickServerMember('${m.id}', ${this.escapeJsAttr(u.display_name)})" class="px-2.5 py-1 rounded bg-[#F0B232]/20 text-[#F0B232] text-xs font-semibold">Kick</button>
-                          <button onclick="app.banServerMember('${m.id}', '${u.id}', ${this.escapeJsAttr(u.display_name)})" class="px-2.5 py-1 rounded bg-[#F23F43] text-white text-xs font-semibold">Ban</button>
+                          <button data-action="kickServerMember" data-action-args="${this.encodeActionArgs([m.id, u.display_name])}" class="px-2.5 py-1 rounded bg-[#F0B232]/20 text-[#F0B232] text-xs font-semibold">Kick</button>
+                          <button data-action="banServerMember" data-action-args="${this.encodeActionArgs([m.id, u.id, u.display_name])}" class="px-2.5 py-1 rounded bg-[#F23F43] text-white text-xs font-semibold">Ban</button>
                         </div>
                       ` : `<span class="text-[10px] bg-[#FEE75C]/20 text-[#FEE75C] px-2 py-0.5 rounded font-bold">SERVER OWNER</span>`}
                     </div>
@@ -1914,7 +1929,7 @@ class PulseCordApp {
         <div class="bg-sidebar border border-subtle rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-5 max-h-[88vh] overflow-y-auto">
           <div class="flex items-center justify-between border-b border-subtle pb-3">
             <h3 class="text-lg font-extrabold text-primary-token">User Profile, Security & Session Switcher</h3>
-            <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+            <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1941,13 +1956,13 @@ class PulseCordApp {
             </div>
           </div>
 
-          <button onclick="app.saveUserProfileSettings()" class="bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold px-4 py-2 rounded-lg">
+          <button data-action="saveUserProfileSettings" class="bg-[#23A55A] hover:bg-[#1e8e4c] text-white text-xs font-bold px-4 py-2 rounded-lg">
             Save Profile & Status
           </button>
 
           <div class="border-t border-subtle pt-4 flex items-center justify-between gap-3">
             <div><h4 class="text-xs font-bold uppercase tracking-wider text-muted-token">Authenticated session</h4><p class="text-xs text-secondary-token mt-1">Signed in as ${this.escapeHtml(me.username)}. Password hashes stay server-side.</p></div>
-            <button onclick="app.logout()" class="bg-[#F23F43] hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded">Sign out</button>
+            <button data-action="logout" class="bg-[#F23F43] hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded">Sign out</button>
           </div>
       </div>
     `;
@@ -1961,12 +1976,12 @@ class PulseCordApp {
         <div class="bg-sidebar border border-subtle rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
           <div class="flex items-center justify-between">
             <h3 class="text-base font-bold text-primary-token">Invite friends to ${this.escapeHtml(srv.name)}</h3>
-            <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+            <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <p class="text-xs text-muted-token">Share this invite code so others can join this server immediately:</p>
           <div class="flex items-center gap-2 bg-input p-2 rounded-lg border border-subtle">
             <input id="invite-code-copy" type="text" readonly value="${this.escapeAttr(srv.invite_code || srv.id)}" class="flex-1 bg-transparent text-sm font-mono text-primary-token outline-none px-2" />
-            <button onclick="navigator.clipboard.writeText('${this.escapeAttr(srv.invite_code || srv.id)}'); app.showToast('Invite code copied!', 'success');" class="bg-[#5865F2] text-white text-xs font-bold px-4 py-2 rounded">
+            <button data-action="copyInviteCode" data-action-args="${this.encodeActionArgs([srv.invite_code || srv.id])}" class="bg-[#5865F2] text-white text-xs font-bold px-4 py-2 rounded">
               Copy
             </button>
           </div>
@@ -1981,7 +1996,7 @@ class PulseCordApp {
         <div class="bg-sidebar border border-subtle rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
           <div class="flex items-center justify-between">
             <h3 class="text-base font-bold text-primary-token">Create Channel in ${this.escapeHtml(categoryName)}</h3>
-            <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+            <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div>
             <label class="text-xs font-bold uppercase text-muted-token">Channel Type</label>
@@ -2000,7 +2015,7 @@ class PulseCordApp {
             <label class="text-xs font-bold uppercase text-muted-token">Channel Topic</label>
             <input id="new-channel-topic" type="text" placeholder="Optional topic description..." class="w-full mt-1 bg-input text-sm text-primary-token px-3 py-2 rounded border border-subtle" />
           </div>
-          <button onclick="app.createNewChannel(${this.escapeJsAttr(categoryName)})" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-2.5 rounded-lg">
+          <button data-action="createNewChannel" data-action-args="${this.encodeActionArgs([categoryName])}" class="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-2.5 rounded-lg">
             Create Channel
           </button>
         </div>
@@ -2014,32 +2029,32 @@ class PulseCordApp {
         <div class="bg-sidebar border border-subtle rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
           <div class="flex items-center justify-between">
             <h3 class="text-base font-bold text-primary-token">WebRTC Audio & Video Hardware</h3>
-            <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+            <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="space-y-3 text-xs">
             <div>
               <label class="font-bold uppercase text-muted-token">Microphone Input (Echo Cancellation + Noise Suppression)</label>
-              <select id="audio-input-select" onchange="app.changeMediaDevice('audioinput', this.value)" class="w-full mt-1 bg-input text-primary-token px-3 py-2 rounded border border-subtle">
+              <select id="audio-input-select" data-action="changeMediaDevice" data-action-event="change" data-action-args="${this.encodeActionArgs(['audioinput', { __pulsecordEventValue: true }])}" class="w-full mt-1 bg-input text-primary-token px-3 py-2 rounded border border-subtle">
                 <option value="default" ${this.rtc.selectedAudioInput === 'default' ? 'selected' : ''}>Default System Microphone</option>
                 ${this.rtc.audioInputs.map((d) => `<option value="${this.escapeAttr(d.deviceId)}" ${this.rtc.selectedAudioInput === d.deviceId ? 'selected' : ''}>${this.escapeHtml(d.label || 'Audio Input')}</option>`).join('')}
               </select>
             </div>
             <div>
               <label class="font-bold uppercase text-muted-token">Audio Output Speaker</label>
-              <select id="audio-output-select" onchange="app.changeMediaDevice('audiooutput', this.value)" class="w-full mt-1 bg-input text-primary-token px-3 py-2 rounded border border-subtle">
+              <select id="audio-output-select" data-action="changeMediaDevice" data-action-event="change" data-action-args="${this.encodeActionArgs(['audiooutput', { __pulsecordEventValue: true }])}" class="w-full mt-1 bg-input text-primary-token px-3 py-2 rounded border border-subtle">
                 <option value="default" ${this.rtc.selectedAudioOutput === 'default' ? 'selected' : ''}>Default System Audio Output</option>
                 ${this.rtc.audioOutputs.map((d) => `<option value="${this.escapeAttr(d.deviceId)}" ${this.rtc.selectedAudioOutput === d.deviceId ? 'selected' : ''}>${this.escapeHtml(d.label || 'Audio Output')}</option>`).join('')}
               </select>
             </div>
             <div>
               <label class="font-bold uppercase text-muted-token">Camera Video Input</label>
-              <select id="video-input-select" onchange="app.changeMediaDevice('videoinput', this.value)" class="w-full mt-1 bg-input text-primary-token px-3 py-2 rounded border border-subtle">
+              <select id="video-input-select" data-action="changeMediaDevice" data-action-event="change" data-action-args="${this.encodeActionArgs(['videoinput', { __pulsecordEventValue: true }])}" class="w-full mt-1 bg-input text-primary-token px-3 py-2 rounded border border-subtle">
                 <option value="default" ${this.rtc.selectedVideoInput === 'default' ? 'selected' : ''}>Default Camera</option>
                 ${this.rtc.videoInputs.map((d) => `<option value="${this.escapeAttr(d.deviceId)}" ${this.rtc.selectedVideoInput === d.deviceId ? 'selected' : ''}>${this.escapeHtml(d.label || 'Video Camera')}</option>`).join('')}
               </select>
             </div>
           </div>
-          <button onclick="app.closeModal()" class="w-full bg-[#23A55A] text-white text-xs font-bold py-2 rounded-lg">Done</button>
+          <button data-action="closeModal" class="w-full bg-[#23A55A] text-white text-xs font-bold py-2 rounded-lg">Done</button>
         </div>
       </div>
     `;
@@ -2053,7 +2068,7 @@ class PulseCordApp {
         <div class="bg-sidebar border border-subtle rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
           <div class="flex items-center justify-between">
             <h3 class="text-base font-bold text-primary-token">Start Direct or Group Conversation</h3>
-            <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+            <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <input id="new-group-dm-name" type="text" placeholder="Optional Group Name (if selecting 2+ members)" class="w-full bg-input text-xs text-primary-token px-3 py-2 rounded border border-subtle" />
           <div class="space-y-1.5 max-h-56 overflow-y-auto">
@@ -2064,7 +2079,7 @@ class PulseCordApp {
               </label>
             `).join('')}
           </div>
-          <button onclick="app.createCustomDmConversation()" class="w-full bg-[#5865F2] text-white text-xs font-bold py-2.5 rounded-lg">
+          <button data-action="createCustomDmConversation" class="w-full bg-[#5865F2] text-white text-xs font-bold py-2.5 rounded-lg">
             Open Conversation
           </button>
         </div>
@@ -2089,7 +2104,7 @@ class PulseCordApp {
                 <h4 class="text-base font-extrabold text-primary-token">${this.escapeHtml(u.display_name)}</h4>
                 <div class="text-xs text-muted-token">@${this.escapeHtml(u.username)}#${this.escapeHtml(u.discriminator || '0001')}</div>
               </div>
-              <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
+              <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark"></i></button>
             </div>
             ${u.custom_status ? `<div class="mt-2 text-xs text-secondary-token bg-elevated px-2.5 py-1.5 rounded">${this.escapeHtml(u.custom_status)}</div>` : ''}
             <div class="mt-3 text-xs text-secondary-token">${this.escapeHtml(u.bio || 'No bio set.')}</div>
@@ -2106,8 +2121,8 @@ class PulseCordApp {
             </div>
             ${u.id !== this.state.currentUserId ? `
               <div class="mt-4 flex gap-2">
-                <button onclick="app.closeModal(); app.startDmWithUser('${u.id}');" class="flex-1 bg-[#5865F2] text-white text-xs font-bold py-2 rounded">Send DM</button>
-                <button onclick="app.sendFriendRequestById('${u.id}')" class="bg-[#23A55A] text-white text-xs font-bold px-3 py-2 rounded">+ Friend</button>
+                <button data-action="closeModalAndStartDm" data-action-args="${this.encodeActionArgs([u.id])}" class="flex-1 bg-[#5865F2] text-white text-xs font-bold py-2 rounded">Send DM</button>
+                <button data-action="sendFriendRequestById" data-action-args="${this.encodeActionArgs([u.id])}" class="bg-[#23A55A] text-white text-xs font-bold px-3 py-2 rounded">+ Friend</button>
               </div>
             ` : ''}
           </div>
@@ -2129,14 +2144,14 @@ class PulseCordApp {
               </h3>
               <p class="text-xs text-muted-token">All production files below are included directly in this repository for immediate GitHub push & Railway deployment.</p>
             </div>
-            <button onclick="app.closeModal()" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <button data-action="closeModal" class="text-muted-token hover:text-primary-token"><i class="fa-solid fa-xmark text-lg"></i></button>
           </div>
 
           <div class="px-6 py-2 bg-elevated/60 border-b border-subtle flex flex-wrap gap-2 text-xs">
-            <button onclick="app.setBlueprintTab('prisma')" class="px-3 py-1 rounded font-semibold ${tab === 'prisma' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">prisma/schema.prisma (18 Models)</button>
-            <button onclick="app.setBlueprintTab('railway')" class="px-3 py-1 rounded font-semibold ${tab === 'railway' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">railway.json + Dockerfile</button>
-            <button onclick="app.setBlueprintTab('backend')" class="px-3 py-1 rounded font-semibold ${tab === 'backend' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">server/index.ts (Express + Socket.IO + LiveKit SFU)</button>
-            <button onclick="app.setBlueprintTab('env')" class="px-3 py-1 rounded font-semibold ${tab === 'env' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">.env.example & Healthcheck</button>
+            <button data-action="setBlueprintTab" data-action-args="${this.encodeActionArgs(['prisma'])}" class="px-3 py-1 rounded font-semibold ${tab === 'prisma' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">prisma/schema.prisma (18 Models)</button>
+            <button data-action="setBlueprintTab" data-action-args="${this.encodeActionArgs(['railway'])}" class="px-3 py-1 rounded font-semibold ${tab === 'railway' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">railway.json + Dockerfile</button>
+            <button data-action="setBlueprintTab" data-action-args="${this.encodeActionArgs(['backend'])}" class="px-3 py-1 rounded font-semibold ${tab === 'backend' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">server/index.ts (Express + Socket.IO + LiveKit SFU)</button>
+            <button data-action="setBlueprintTab" data-action-args="${this.encodeActionArgs(['env'])}" class="px-3 py-1 rounded font-semibold ${tab === 'env' ? 'bg-[#5865F2] text-white' : 'text-secondary-token hover:bg-white/5'}">.env.example & Healthcheck</button>
           </div>
 
           <div class="flex-1 overflow-y-auto p-6 bg-[#0d1117] text-gray-200 font-mono text-xs leading-relaxed">
@@ -3139,6 +3154,10 @@ LIVEKIT_API_SECRET=(LiveKit server secret)</pre>` : ''}
   bindGlobalEvents() {
     if (this.globalEventsBound) return;
     this.globalEventsBound = true;
+    document.addEventListener('click', (event) => this.handleDelegatedClick(event));
+    document.addEventListener('input', (event) => this.handleDelegatedDataEvent('input', event));
+    document.addEventListener('change', (event) => this.handleDelegatedDataEvent('change', event));
+    document.addEventListener('keydown', (event) => this.handleDelegatedKeydown(event));
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -3148,6 +3167,101 @@ LIVEKIT_API_SECRET=(LiveKit server secret)</pre>` : ''}
         this.closeModal();
       }
     });
+  }
+
+  handleDelegatedClick(event) {
+    const origin = event.target?.closest ? event.target : event.target?.parentElement;
+    if (!origin) return;
+    const stopper = origin.closest('[data-stop-click="true"]');
+    const actionElement = origin.closest('[data-action]');
+    if (stopper && (!actionElement || !stopper.contains(actionElement))) {
+      event.stopPropagation();
+      return;
+    }
+    if (actionElement && (!actionElement.dataset.actionEvent || actionElement.dataset.actionEvent === 'click')) {
+      this.dispatchDelegatedAction(actionElement, event);
+    }
+    if (stopper) event.stopPropagation();
+  }
+
+  handleDelegatedDataEvent(type, event) {
+    const origin = event.target?.closest ? event.target : event.target?.parentElement;
+    const actionElement = origin?.closest(`[data-action][data-action-event="${type}"]`);
+    if (actionElement) this.dispatchDelegatedAction(actionElement, event);
+  }
+
+  handleDelegatedKeydown(event) {
+    const origin = event.target?.closest ? event.target : event.target?.parentElement;
+    const input = origin?.closest('[data-key-action]');
+    if (!input) return;
+    let args;
+    try { args = JSON.parse(input.dataset.keyActionArgs || '[]'); }
+    catch (error) { console.error('Invalid delegated key-action arguments', error); return; }
+    if (!Array.isArray(args)) return;
+    if (input.dataset.keyAction === 'send-message' && event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      this.sendMessage(...args);
+    } else if (input.dataset.keyAction === 'edit-message') {
+      if (event.key === 'Enter') this.saveEditedMessage(...args);
+      else if (event.key === 'Escape') this.cancelEditMessage();
+    } else if (input.dataset.keyAction === 'thread-reply' && event.key === 'Enter') {
+      event.preventDefault();
+      this.sendThreadReply(...args);
+    }
+  }
+
+  dispatchDelegatedAction(element, event) {
+    const action = element.dataset.action;
+    if (!DELEGATED_ACTIONS.has(action)) return;
+    let args;
+    try { args = JSON.parse(element.dataset.actionArgs || '[]'); }
+    catch (error) { console.error(`Invalid arguments for UI action ${action}`, error); return; }
+    if (!Array.isArray(args)) return;
+    args = args.map((value) => value && value.__pulsecordEventValue === true ? element.value : value);
+    let result;
+    try {
+      if (action === 'copyInviteCode') {
+        result = this.copyInviteCode(args[0]);
+      } else if (action === 'closeModalAndStartDm') {
+        this.closeModal();
+        result = this.startDmWithUser(args[0]);
+      } else if (action === 'toggleSelectedMemberRole') {
+        const select = document.getElementById(`member-role-${args[0]}`);
+        if (!select?.value) return this.showToast('Choose a role first.', 'error');
+        result = this.toggleMemberRole(args[0], select.value);
+      } else if (action === 'toggleEmojiPicker') {
+        const picker = element.parentElement?.querySelector('[data-emoji-picker]');
+        if (picker) {
+          const opening = picker.classList.contains('hidden');
+          picker.classList.toggle('hidden', !opening);
+          picker.classList.toggle('flex', opening);
+          element.setAttribute('aria-expanded', String(opening));
+        }
+      } else if (typeof this[action] === 'function') {
+        result = this[action](...args);
+      } else {
+        console.error(`UI action is not implemented: ${action}`);
+      }
+    } catch (error) {
+      console.error(`UI action failed: ${action}`, error);
+      this.showToast(error?.message || 'The requested action failed.', 'error');
+      return;
+    }
+    if (result && typeof result.catch === 'function') {
+      result.catch((error) => {
+        console.error(`UI action failed: ${action}`, error);
+        this.showToast(error?.message || 'The requested action failed.', 'error');
+      });
+    }
+  }
+
+  async copyInviteCode(code) {
+    try {
+      await navigator.clipboard.writeText(String(code || ''));
+      this.showToast('Invite code copied!', 'success');
+    } catch (error) {
+      this.showToast('Could not copy the invite code. Check clipboard permissions.', 'error');
+    }
   }
 
   formatTimestamp(iso) {
@@ -3181,6 +3295,10 @@ LIVEKIT_API_SECRET=(LiveKit server secret)</pre>` : ''}
 
   escapeAttr(str) {
     return this.escapeHtml(str);
+  }
+
+  encodeActionArgs(args) {
+    return this.escapeAttr(JSON.stringify(args ?? []));
   }
 
   escapeJsAttr(value) {
